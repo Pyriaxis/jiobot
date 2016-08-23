@@ -8,6 +8,9 @@ const _ = require('lodash');
 const bottoken = require('./config/config.js');
 const TeleBot = require('telebot');
 
+const url = 'localhost:27017/jiobot'; //change in production
+const db = monk(url);
+
 const bot = new TeleBot({
     token: bottoken.config.apiKey, // Required. Telegram Bot API token.
     pooling: { // Optional. Use pooling.
@@ -20,54 +23,79 @@ const bot = new TeleBot({
 
 bot.use(require('./node_modules/telebot/modules/ask.js'));
 
-const lazyDB = {}; // i'm lazy to set up mongo
+const creating = {};
+const jioDB = db.get('jioData');
 
 bot.on(['/start', '/help'], msg => {
     return bot.sendMessage(msg.from.id, 'Hi there!')
 });
 
 bot.on('/new', msg => {
-    if (msg.chat.type === 'private'){
+    if (msg.chat.type !== 'private'){
         //reject
-        return bot.sendMessage(msg.from.id, 'Please create the Jio in a group chat.');
+        return bot.sendMessage(msg.chat.id, 'Please create the Jio privately, then share it to a group chat.');
+    } else if (creating[msg.from.id] !== undefined){
+        return bot.sendMessage(msg.from.id, 'You are already in process of creating a Jio. Please finish or cancel that Jio first.')
     } else {
-        console.log(msg.chat.id);
-        return bot.sendMessage(msg.chat.id, 'What is the name of the meetup?', {ask: 'meetupTitle' });
+        creating[msg.from.id] = 'init'; //set local flag to true to prevent shenenigans.
+        return bot.sendMessage(msg.chat.id, 'What is the title/description of the Jio?', {ask: 'meetupTitle' });
     };
 });
 
 //Bot waiting for meetupTitle
 bot.on('ask.meetupTitle', msg => {
     //replace with DB later ... initializing array
-    if (lazyDB[msg.chat.id] === undefined){
-        lazyDB[msg.chat.id] = [];
-    }
-    lazyDB[msg.chat.id].push({
-        creator: msg.from.id,
+    jioDB.insert({
+        creator: msg.from.first_name + ' ' + (msg.from.last_name || ''),
         title: msg.text,
-        active: true
+        active: true,
+        options: []
+    }).then(doc => {
+        creating[msg.from.id] = doc._id;
+    }).catch(err => {
+        //handle error
+    }).then(()=>{
+        db.close()
     });
 
-    return bot.sendMessage(msg.chat.id, 'What options do you want?', {ask: 'meetupOptions'});
+    return bot.sendMessage(msg.from.id, 'Now send me a list of options to add, one by one.', {ask: 'meetupOptions'});
 });
 
-bot.on('/end', msg => {
-})
 
 bot.on('ask.meetupOptions', msg => {
-    var jioObject = _.find(lazyDB[msg.chat.id], {'creator': msg.from.id, 'active': true });
-    if (jioObject.options === undefined){
-        jioObject.options = [];
+
+    if (msg.text === '/finishJio') {
+
+        delete(creating[msg.from.id]);
+        let inlineArray = [];
+
+        return jioDB.findOne({_id: creating[msg.from.id]}).then(doc => {
+            for (let i = 0; i < doc.options.length; i++){
+                inlineArray.push([bot.inlineButton(doc.options[i], {callback: doc.options[i]}) ]);
+            }
+            inlineArray.push([bot.inlineButton('Share Jio', {callback: 'share'}), bot.inlineButton('Cancel Jio', {callback: 'cancel'})]);
+
+            console.log(inlineArray);
+
+            let markup = bot.inlineKeyboard(inlineArray);
+
+            return bot.sendMessage(msg.chat.id, 'Jio for ' + doc.title + ' created by ' + doc.creator + '!\n' +
+                'Please verify the options below:', { markup });
+        })
+
     }
 
-    if (msg.text === 'finished jioing') {
-        return bot.sendMessage(msg.chat.id, 'Jio for ' + jioObject.title + ' with the following options ' + jioObject.options);
-    }
+    jioDB.findOne({_id: creating[msg.from.id]}, 'options').then(doc =>{
+        var newOptions = doc.options;
+        newOptions.push(msg.text);
+        jioDB.update({_id: creating[msg.from.id]}, {options: newOptions});
+    }).catch( err =>{
+        console.log('meetup Options error');
+    }).then(()=> {db.close()});
 
-    jioObject.options.push(msg.text);
     let markup = bot.keyboard([
-        ['finished jioing']
-    ],{resize: true});
+        ['/finishJio']
+    ],{resize: true, once: true});
 
     return bot.sendMessage(msg.chat.id, 'Ok, option added. Please continue adding options or press the done button.', {markup, ask: 'meetupOptions'});
 })
@@ -76,8 +104,11 @@ bot.on(['/check'], msg => {
 
 });
 
-bot.on('/debug', msg => {
+bot.on('*', msg => {
+    console.log('--------------------------');
+    console.log(msg);
     console.log(lazyDB);
+    console.log('--------------------------');
 });
 
 
