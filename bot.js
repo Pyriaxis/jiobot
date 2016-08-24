@@ -25,6 +25,7 @@ bot.use(require('./node_modules/telebot/modules/ask.js'));
 
 const creating = {};
 const jioDB = db.get('jioData');
+const jioMapping = db.get('jioMapping');
 
 bot.on(['/start', '/help'], msg => {
     return bot.sendMessage(msg.from.id, 'Hi there!')
@@ -37,7 +38,7 @@ bot.on('/new', msg => {
     } else if (creating[msg.from.id] !== undefined){
         return bot.sendMessage(msg.from.id, 'You are already in process of creating a Jio. Please finish or cancel that Jio first.')
     } else {
-        creating[msg.from.id] = 'init'; //set local flag to true to prevent shenenigans.
+        creating[msg.from.id] = 'init'; //set local flag to true to prevent shenanigans.
         return bot.sendMessage(msg.chat.id, 'What is the title/description of the Jio?', {ask: 'meetupTitle' });
     };
 });
@@ -46,6 +47,7 @@ bot.on('/new', msg => {
 bot.on('ask.meetupTitle', msg => {
     //replace with DB later ... initializing array
     jioDB.insert({
+        creatorId: msg.from.id,
         creator: msg.from.first_name + ' ' + (msg.from.last_name || ''),
         title: msg.text,
         active: true,
@@ -66,19 +68,22 @@ bot.on('ask.meetupOptions', msg => {
 
     if (msg.text === '/finishJio') {
 
-        delete(creating[msg.from.id]);
         let inlineArray = [];
 
         return jioDB.findOne({_id: creating[msg.from.id]}).then(doc => {
             for (let i = 0; i < doc.options.length; i++){
                 inlineArray.push([bot.inlineButton(doc.options[i], {callback: doc.options[i]}) ]);
             }
-            inlineArray.push([bot.inlineButton('Share Jio', {callback: 'share'}), bot.inlineButton('Cancel Jio', {callback: 'cancel'})]);
+            console.log(doc._id);
+
+            inlineArray.push([bot.inlineButton('Share Jio', {inline: doc._id}), bot.inlineButton('Cancel Jio', {callback: 'cancel'})]);
 
             console.log(inlineArray);
 
-            let markup = bot.inlineKeyboard(inlineArray);
 
+            delete(creating[msg.from.id]);
+
+            let markup = bot.inlineKeyboard(inlineArray);
             return bot.sendMessage(msg.chat.id, 'Jio for ' + doc.title + ' created by ' + doc.creator + '!\n' +
                 'Please verify the options below:', { markup });
         })
@@ -88,7 +93,7 @@ bot.on('ask.meetupOptions', msg => {
     jioDB.findOne({_id: creating[msg.from.id]}, 'options').then(doc =>{
         var newOptions = doc.options;
         newOptions.push(msg.text);
-        jioDB.update({_id: creating[msg.from.id]}, {options: newOptions});
+        jioDB.update({_id: creating[msg.from.id]}, {$set:{options: newOptions}});
     }).catch( err =>{
         console.log('meetup Options error');
     }).then(()=> {db.close()});
@@ -98,17 +103,33 @@ bot.on('ask.meetupOptions', msg => {
     ],{resize: true, once: true});
 
     return bot.sendMessage(msg.chat.id, 'Ok, option added. Please continue adding options or press the done button.', {markup, ask: 'meetupOptions'});
-})
-
-bot.on(['/check'], msg => {
-
 });
 
-bot.on('*', msg => {
-    console.log('--------------------------');
+bot.on('inlineQuery', msg => {
     console.log(msg);
-    console.log(lazyDB);
-    console.log('--------------------------');
+    let answers = bot.answerList(msg.id, {cacheTime: 5});
+    var query = msg.query;
+    jioDB.findOne({_id: monk.id(query)}).then(doc => {
+        console.log(doc);
+
+        let optionStr = '';
+        for (let i = 0; i < doc.options.length; i++){
+            console.log(doc.options[i]);
+            optionStr += doc.options[i] + ' ';
+        }
+
+        answers.addArticle({
+            id: doc._id,
+            title: doc.title,
+            description: doc.title,
+            message_text: optionStr
+        });
+
+        return bot.answerQuery(answers);
+
+    }).catch(err => {
+        console.log(err);
+    });
 });
 
 
