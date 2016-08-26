@@ -112,17 +112,20 @@ bot.on('inlineQuery', msg => {
     jioDB.findOne({_id: monk.id(query)}).then(doc => {
         console.log(doc);
 
-        let optionStr = '';
+        let optionArray = []
         for (let i = 0; i < doc.options.length; i++){
-            console.log(doc.options[i]);
-            optionStr += doc.options[i] + ' ';
+            optionArray.push([ bot.inlineButton(doc.options[i], {callback: JSON.stringify({ id: doc._id ,option: doc.options[i]}) })]);
+
         }
 
+        var jioOptionKeyboard = bot.inlineKeyboard(optionArray);
+
         answers.addArticle({
+            reply_markup: jioOptionKeyboard,
             id: doc._id,
             title: doc.title,
-            description: doc.title,
-            message_text: optionStr
+            description: 'Press to share jio with friends!',
+            message_text: "Hi, this Jio is for " + doc.title + ".\nVote for the options below:"
         });
 
         return bot.answerQuery(answers);
@@ -130,6 +133,12 @@ bot.on('inlineQuery', msg => {
     }).catch(err => {
         console.log(err);
     });
+});
+
+bot.on('callbackQuery', msg =>{
+    console.log(msg);
+    var json = JSON.parse(msg.data);
+    console.log(json);
 });
 
 
