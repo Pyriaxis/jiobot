@@ -26,43 +26,70 @@ bot.use(require('./node_modules/telebot/modules/ask.js'));
 const creating = {};
 const jioDB = db.get('jioData');
 const jioMapping = db.get('jioMapping');
+const jioMembers = db.get('jioMembers');
 
 bot.on(['/start', '/help'], msg => {
     return bot.sendMessage(msg.from.id, 'Hi there!')
 });
 
-bot.on('/new', msg => {
-    if (msg.chat.type !== 'private'){
-        //reject
-        return bot.sendMessage(msg.chat.id, 'Please create the Jio privately, then share it to a group chat.');
-    } else if (creating[msg.from.id] !== undefined){
-        return bot.sendMessage(msg.from.id, 'You are already in process of creating a Jio. Please finish or cancel that Jio first.')
+bot.on('/register', msg => {
+
+    if (msg.chat.type !== 'private') {
+        return bot.sendMessage(msg.chat.id, 'Please /register with me in private before creating Jios.');
     } else {
-        creating[msg.from.id] = 'init'; //set local flag to true to prevent shenanigans.
-        return bot.sendMessage(msg.chat.id, 'What is the title/description of the Jio?', {ask: 'meetupTitle' });
-    };
+        jioMembers.findOne({telegramId: msg.from.id}).then(doc => {
+            if (doc !== null){
+                return bot.sendMessage(msg.from.id, 'You have already registered with the jioBot.');
+            }  else {
+                jioMembers.insert({
+                    telegramId: msg.from.id
+                }).then( newDoc => {
+                    return bot.sendMessage(msg.from.id, 'You have successfully registered with the jioBot.');
+                });
+            }
+        });
+    }
+});
+
+bot.on('/new', msg => {
+
+    jioMembers.findOne({telegramId: msg.from.id}).then(doc =>{
+        if (doc !== null){
+            if (creating[msg.from.id] !== undefined){
+                return bot.sendMessage(msg.from.id, 'You are already in process of creating a Jio. Please finish or cancel that Jio first.')
+            } else {
+
+                jioDB.insert({
+                    creatorId: msg.from.id,
+                    groupId: msg.chat.id,
+                    creator: msg.from.first_name + ' ' + (msg.from.last_name || ''),
+                    title: null,
+                    active: true,
+                    options: []
+                }).then(newDoc => {
+                    creating[msg.from.id] = newDoc._id; //set local flag to true to prevent shenanigans.
+                    return bot.sendMessage(msg.chat.id, 'What is the title/description of the Jio?', {ask: 'meetupTitle' });
+                });
+            };
+        } else {
+            return bot.sendMessage(msg.chat.id, 'Please /register with me in private before creating Jios.');
+        }
+    });
 });
 
 //Bot waiting for meetupTitle
 bot.on('ask.meetupTitle', msg => {
     //replace with DB later ... initializing array
-    jioDB.insert({
-        creatorId: msg.from.id,
-        creator: msg.from.first_name + ' ' + (msg.from.last_name || ''),
-        title: msg.text,
-        active: true,
-        options: []
-    }).then(doc => {
-        creating[msg.from.id] = doc._id;
-    }).catch(err => {
-        //handle error
-    }).then(()=>{
-        db.close()
-    });
-
-    return bot.sendMessage(msg.from.id, 'Now send me a list of options to add, one by one.', {ask: 'meetupOptions'});
+    return jioDB.findOne({creatorId: msg.from.id}).then(doc => {
+        if (doc){
+            return jioDB.update({_id: monk.id(doc._id)}, {$set: {title: msg.text}}).then(updDoc => {
+                return bot.sendMessage(msg.from.id, 'Now send me a list of options to add, one by one.', {ask: 'meetupOptions'});
+            });
+        } else {
+            return bot.sendMessage(msg.chat.id, 'You are not the creator of the jio, please hold on.', {ask: 'meetupTitle'});
+        };
+    })
 });
-
 
 bot.on('ask.meetupOptions', msg => {
 
@@ -70,29 +97,25 @@ bot.on('ask.meetupOptions', msg => {
 
         let inlineArray = [];
 
+        //group workflow
         return jioDB.findOne({_id: creating[msg.from.id]}).then(doc => {
             for (let i = 0; i < doc.options.length; i++){
-                inlineArray.push([bot.inlineButton(doc.options[i], {callback: doc.options[i]}) ]);
+                inlineArray.push([bot.inlineButton(doc.options[i].optionName, {callback: JSON.stringify({ id: doc._id ,optionName: doc.options[i].optionName}) }) ]);
             }
-            console.log(doc._id);
 
-            inlineArray.push([bot.inlineButton('Share Jio', {inline: doc._id}), bot.inlineButton('Cancel Jio', {callback: 'cancel'})]);
-
-            console.log(inlineArray);
-
+            //inlineArray.push([bot.inlineButton('Share Jio', {inline: doc._id}), bot.inlineButton('Cancel Jio', {callback: 'cancel'})]);
 
             delete(creating[msg.from.id]);
 
             let markup = bot.inlineKeyboard(inlineArray);
-            return bot.sendMessage(msg.chat.id, 'Jio for ' + doc.title + ' created by ' + doc.creator + '!\n' +
-                'Please verify the options below:', { markup });
-        })
-
+            return bot.sendMessage(doc.groupId, 'Jio for ' + doc.title + ' created by ' + doc.creator + '!\n' +
+                'Please choose from the options below:', { markup });
+        });
     }
 
     jioDB.findOne({_id: creating[msg.from.id]}, 'options').then(doc =>{
         var newOptions = doc.options;
-        newOptions.push(msg.text);
+        newOptions.push({optionName: msg.text, voters: []});
         jioDB.update({_id: creating[msg.from.id]}, {$set:{options: newOptions}});
     }).catch( err =>{
         console.log('meetup Options error');
@@ -114,11 +137,11 @@ bot.on('inlineQuery', msg => {
 
         let optionArray = []
         for (let i = 0; i < doc.options.length; i++){
-            optionArray.push([ bot.inlineButton(doc.options[i], {callback: JSON.stringify({ id: doc._id ,option: doc.options[i]}) })]);
+            optionArray.push([ bot.inlineButton(doc.options[i].optionName, {callback: JSON.stringify({ id: doc._id ,optionName: doc.options[i].optionName}) })]);
 
         }
 
-        var jioOptionKeyboard = bot.inlineKeyboard(optionArray);
+        var jioOptionKeyboard = bot.inlineQueryKeyboard(optionArray);
 
         answers.addArticle({
             reply_markup: jioOptionKeyboard,
@@ -136,9 +159,55 @@ bot.on('inlineQuery', msg => {
 });
 
 bot.on('callbackQuery', msg =>{
+
     console.log(msg);
+
     var json = JSON.parse(msg.data);
-    console.log(json);
+    var id = json.id;
+    var cboption = json.optionName;
+
+    return jioDB.findOne({_id: monk.id(json.id)}).then(doc => {
+        let updatedOptions = doc.options;
+        let optionIndex =  _.findIndex(updatedOptions, {optionName: cboption});
+
+
+        if (optionIndex !== -1){
+            //success
+            let voteIndex = _.findIndex(updatedOptions[optionIndex].voters, {id: msg.from.id});
+
+            if (voteIndex === -1){
+                updatedOptions[optionIndex].voters.push({id: msg.from.id, name: msg.from.first_name + " " +  (msg.from.last_name || "")});
+                jioDB.update({_id: monk.id(json.id)}, {$set:{options: updatedOptions}}); //todo: fix concurrency issue
+                return;
+            } else {
+
+
+                //alr voted
+                return;
+            }
+        } else {
+            //failure
+            return; //optionally let bot send a message;
+        }
+    });
+});
+
+bot.on('/showJio', msg => {
+
+    return jioDB.find({groupId: msg.chat.id}).then(doc =>{
+        console.log(doc);
+        for (var i = 0; i < doc.length; i++){
+            let inlineArray = [];
+            for (let j = 0; j < doc[i].options.length; j++){
+                inlineArray.push([bot.inlineButton(doc[i].options[j].optionName + ' - ' + doc[i].options[j].voters.length, {callback: JSON.stringify({ id: doc[i]._id ,optionName: doc[i].options[j].optionName}) }) ]);
+            }
+
+            let markup = bot.inlineKeyboard(inlineArray);
+            bot.sendMessage(doc[i].groupId, 'Jio for ' + doc[i].title + ' created by ' + doc[i].creator + '!\n' +
+                'Please choose from the options below:', { markup });
+        }
+    });
+
 });
 
 
