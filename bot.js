@@ -79,6 +79,7 @@ bot.on('/new', msg => {
 //Bot waiting for meetupTitle
 bot.on('ask.meetupTitle', msg => {
     //replace with DB later ... initializing array
+    //todo: fix multiple DB entry creation
     return jioDB.findOne({creatorId: msg.from.id}).then(doc => {
         if (doc){
             return jioDB.update({_id: monk.id(doc._id)}, {$set: {title: msg.text}}).then(updDoc => {
@@ -127,35 +128,35 @@ bot.on('ask.meetupOptions', msg => {
     return bot.sendMessage(msg.chat.id, 'Ok, option added. Please continue adding options or press the done button.', {markup, ask: 'meetupOptions'});
 });
 
-bot.on('inlineQuery', msg => {
-    console.log(msg);
-    let answers = bot.answerList(msg.id, {cacheTime: 5});
-    var query = msg.query;
-    jioDB.findOne({_id: monk.id(query)}).then(doc => {
-        console.log(doc);
-
-        let optionArray = []
-        for (let i = 0; i < doc.options.length; i++){
-            optionArray.push([ bot.inlineButton(doc.options[i].optionName, {callback: JSON.stringify({ id: doc._id ,optionName: doc.options[i].optionName}) })]);
-
-        }
-
-        var jioOptionKeyboard = bot.inlineQueryKeyboard(optionArray);
-
-        answers.addArticle({
-            reply_markup: jioOptionKeyboard,
-            id: doc._id,
-            title: doc.title,
-            description: 'Press to share jio with friends!',
-            message_text: "Hi, this Jio is for " + doc.title + ".\nVote for the options below:"
-        });
-
-        return bot.answerQuery(answers);
-
-    }).catch(err => {
-        console.log(err);
-    });
-});
+// bot.on('inlineQuery', msg => {
+//     console.log(msg);
+//     let answers = bot.answerList(msg.id, {cacheTime: 5});
+//     var query = msg.query;
+//     jioDB.findOne({_id: monk.id(query)}).then(doc => {
+//         console.log(doc);
+//
+//         let optionArray = []
+//         for (let i = 0; i < doc.options.length; i++){
+//             optionArray.push([ bot.inlineButton(doc.options[i].optionName, {callback: JSON.stringify({ id: doc._id ,optionName: doc.options[i].optionName}) })]);
+//
+//         }
+//
+//         var jioOptionKeyboard = bot.inlineQueryKeyboard(optionArray);
+//
+//         answers.addArticle({
+//             reply_markup: jioOptionKeyboard,
+//             id: doc._id,
+//             title: doc.title,
+//             description: 'Press to share jio with friends!',
+//             message_text: "Hi, this Jio is for " + doc.title + ".\nVote for the options below:"
+//         });
+//
+//         return bot.answerQuery(answers);
+//
+//     }).catch(err => {
+//         console.log(err);
+//     });
+// });
 
 bot.on('callbackQuery', msg =>{
 
@@ -177,9 +178,21 @@ bot.on('callbackQuery', msg =>{
             if (voteIndex === -1){
                 updatedOptions[optionIndex].voters.push({id: msg.from.id, name: msg.from.first_name + " " +  (msg.from.last_name || "")});
                 jioDB.update({_id: monk.id(json.id)}, {$set:{options: updatedOptions}}); //todo: fix concurrency issue
-                return;
-            } else {
 
+                let inlineArray = [];
+
+                for (let j = 0; j < doc.options.length; j++){
+                    inlineArray.push([bot.inlineButton(doc.options[j].optionName + ' - ' + doc.options[j].voters.length,
+                        {callback: JSON.stringify({ id: doc._id ,optionName: doc.options[j].optionName}) }) ]);
+                }
+                let markup = bot.inlineKeyboard(inlineArray);
+
+                let chatId = msg.message.chat.id;
+                let messageId = msg.message.message_id;
+
+                return bot.editMarkup({chatId, messageId}, {markup});
+
+            } else {
 
                 //alr voted
                 return;
@@ -210,37 +223,64 @@ bot.on('/showJio', msg => {
 
 });
 
-bot.on('/deleteJio', msg => {
-	
-	// find the list of jios in this group chat
-	// then find the jio of the creatorId = msg.from.id
-	return jioDB.find({groupId: msg.chat.id}).then(doc =>{
-		if (doc){
-			return jioDB.findOne({creatorId: msg.from.id}).then(toDeleteDoc => {
-				if (toDeleteDoc){
-					console.log(toDeleteDoc);
-					
-					let inlineArray = [];
-					inlineArray.push([bot.inlineButton('Yes', {callback: JSON.stringify('confirmDelete')}), bot.inlineButton('No', {callback: JSON.stringify('cancelDelete'))]);
-					
-					let markup = bot.inlineKeyboard(inlineArray);
-					bot.sendMessage(msg.chat.id, msg.from.first_name + ', are you sure to delete the Jio: ' + toDeleteDoc.title + '?', { markup, ask: 'deleteOptions' });
-				} else {
-					bot.sendMessage(msg.chat.id, msg.from.first_name + ', you have not created a Jio in this group!');
-				}
-			});
-		} else {
-			bot.sendMessage(msg.chat.id, 'There is no recorded Jio for this group!');
-		}
-	});
+bot.on('/checkMyJio', msg => {
+    // Find the list of jios created by sender in this group chat
+    return jioDB.find({groupId: msg.chat.id}).then(doc =>{
+        if (doc){
+            return jioDB.find({creatorId: msg.from.id}).then(myJioList => {
+                for (var i = 0; i < myJioList.length; i++){
+                    let inlineArray = [];
+                    for (let j = 0; j < myJioList[i].options.length; j++){
+                        inlineArray.push([bot.inlineButton(myJioList[i].options[j].optionName + ' - ' + myJioList[i].options[j].voters.length,
+                            {callback: JSON.stringify({ id: myJioList[i]._id ,optionName: myJioList[i].options[j].optionName}) }) ]);
+                    }
+                    inlineArray.push([bot.inlineButton('Edit Options', {callback: JSON.stringify({showId: myJioList[i].id})}),
+                        bot.inlineButton('Delete Jio', {callback: '/deleteJio'})]);
+
+                    let markup = bot.inlineKeyboard(inlineArray);
+                    bot.sendMessage(myJioList[i].groupId, 'Jio for ' + myJioList[i].title + ' created by ' + myJioList[i].creator + '!\n' +
+                        'Please choose from the options below:', { markup });
+                }
+            });
+        } else {
+
+        }
+    });
 });
 
-bot.on('ask.deleteOptions', msg => {
-	if (msg.text === 'confirmDelete') {
-		return jioDB.removeOne({creatorId: msg.from.id}, {groupId: msg.chat:id});		
-	} else {
-		bot.sendMessage(msg.chat.id, 'You have cancelled the Jio deletion.');
-	}
-});
+// bot.on('/deleteJio', msg => {
+//
+// 	// find the list of jios in this group chat
+// 	// then find the jio of the creatorId = msg.from.id
+// 	return jioDB.find({groupId: msg.chat.id}).then(doc =>{
+// 		if (doc){
+// 			return jioDB.findOne({creatorId: msg.from.id}).then(toDeleteDoc => {
+// 				if (toDeleteDoc){
+// 					console.log(toDeleteDoc);
+//
+// 					let inlineArray = [];
+// 					inlineArray.push([bot.inlineButton('Yes', {callback: JSON.stringify('confirmDelete')}), bot.inlineButton('No', {callback: JSON.stringify('cancelDelete'))]);
+//
+// 					let markup = bot.inlineKeyboard(inlineArray);
+// 					bot.sendMessage(msg.chat.id, msg.from.first_name + ', are you sure to delete the Jio: ' + toDeleteDoc.title + '?', { markup, ask: 'deleteOptions' });
+// 				} else {
+// 					bot.sendMessage(msg.chat.id, msg.from.first_name + ', you have not created a Jio in this group!');
+// 				}
+// 			});
+// 		} else {
+// 			bot.sendMessage(msg.chat.id, 'There is no recorded Jio for this group!');
+// 		}
+// 	});
+// });
+//
+// bot.on('ask.deleteOptions', msg => {
+// 	if (msg.text === 'confirmDelete') {
+// 		return jioDB.removeOne({creatorId: msg.from.id}, {groupId: msg.chat:id});
+// 	} else {
+// 		bot.sendMessage(msg.chat.id, 'You have cancelled the Jio deletion.');
+// 	}
+// });
 
 bot.connect();
+
+// todo: edit options and delete jio
