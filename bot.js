@@ -1,4 +1,3 @@
-
 var Promise = require('bluebird');
 var monk = require('monk');
 
@@ -199,7 +198,8 @@ bot.on('/showJio', msg => {
         for (var i = 0; i < doc.length; i++){
             let inlineArray = [];
             for (let j = 0; j < doc[i].options.length; j++){
-                inlineArray.push([bot.inlineButton(doc[i].options[j].optionName + ' - ' + doc[i].options[j].voters.length, {callback: JSON.stringify({ id: doc[i]._id ,optionName: doc[i].options[j].optionName}) }) ]);
+                inlineArray.push([bot.inlineButton(doc[i].options[j].optionName + ' - ' + doc[i].options[j].voters.length, 
+				{callback: JSON.stringify({ id: doc[i]._id ,optionName: doc[i].options[j].optionName}) }) ]);
             }
 
             let markup = bot.inlineKeyboard(inlineArray);
@@ -210,5 +210,37 @@ bot.on('/showJio', msg => {
 
 });
 
+bot.on('/deleteJio', msg => {
+	
+	// find the list of jios in this group chat
+	// then find the jio of the creatorId = msg.from.id
+	return jioDB.find({groupId: msg.chat.id}).then(doc =>{
+		if (doc){
+			return jioDB.findOne({creatorId: msg.from.id}).then(toDeleteDoc => {
+				if (toDeleteDoc){
+					console.log(toDeleteDoc);
+					
+					let inlineArray = [];
+					inlineArray.push([bot.inlineButton('Yes', {callback: JSON.stringify('confirmDelete')}), bot.inlineButton('No', {callback: JSON.stringify('cancelDelete'))]);
+					
+					let markup = bot.inlineKeyboard(inlineArray);
+					bot.sendMessage(msg.chat.id, msg.from.first_name + ', are you sure to delete the Jio: ' + toDeleteDoc.title + '?', { markup, ask: 'deleteOptions' });
+				} else {
+					bot.sendMessage(msg.chat.id, msg.from.first_name + ', you have not created a Jio in this group!');
+				}
+			});
+		} else {
+			bot.sendMessage(msg.chat.id, 'There is no recorded Jio for this group!');
+		}
+	});
+});
+
+bot.on('ask.deleteOptions', msg => {
+	if (msg.text === 'confirmDelete') {
+		return jioDB.removeOne({creatorId: msg.from.id}, {groupId: msg.chat:id});		
+	} else {
+		bot.sendMessage(msg.chat.id, 'You have cancelled the Jio deletion.');
+	}
+});
 
 bot.connect();
