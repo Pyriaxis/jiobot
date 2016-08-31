@@ -4,14 +4,14 @@ var monk = require('monk');
 const moment = require('moment');
 const _ = require('lodash');
 
-const bottoken = require('./config/config.js');
+const botconfig = require('./config/config.js');
 const TeleBot = require('telebot');
 
-const url = 'localhost:27017/jiobot'; //change in production
+const url = botconfig.config.db; //change in production
 const db = monk(url);
 
 const bot = new TeleBot({
-    token: bottoken.config.apiKey, // Required. Telegram Bot API token.
+    token: botconfig.config.apiKey, // Required. Telegram Bot API token.
     pooling: { // Optional. Use pooling.
         interval: 1000, // Optional. How often check updates (in ms).
         timeout: 0, // Optional. Update pulling timeout (0 - short polling).
@@ -79,8 +79,7 @@ bot.on('/new', msg => {
 //Bot waiting for meetupTitle
 bot.on('ask.meetupTitle', msg => {
     //replace with DB later ... initializing array
-    //todo: fix multiple DB entry creation
-    return jioDB.findOne({creatorId: msg.from.id}).then(doc => {
+    return jioDB.findOne({_id: monk.id(creating[msg.from.id])}).then(doc => {
         if (doc){
             return jioDB.update({_id: monk.id(doc._id)}, {$set: {title: msg.text}}).then(updDoc => {
                 return bot.sendMessage(msg.from.id, 'Now send me a list of options to add, one by one.', {ask: 'meetupOptions'});
@@ -248,12 +247,18 @@ bot.on('callbackQuery', msg =>{
                     return bot.sendMessage(msg.from.id, json.o + " has been removed." );
                 });
         });
+    } else if (json.delete){
+        return jioDB.findOneAndDelete({_id: monk.id(json.delete)}).then(doc => {
+            bot.sendMessage(doc.groupId, "The Jio " + doc.title + " has been deleted by its creator.");
+        });
     } else {
         //user press response button
-        var id = json.id;
         var cboption = json.optionName;
 
         return jioDB.findOne({_id: monk.id(json.id)}).then(doc => {
+
+            if(_.isNil(doc)) { return bot.sendMessage(msg.message.chat.id || msg.chat.id || msg.from.id, "The Jio you are trying to access has been deleted.")}
+
             let updatedOptions = doc.options;
             let optionIndex =  _.findIndex(updatedOptions, {optionName: cboption});
 
@@ -323,7 +328,7 @@ bot.on('/checkMyJio', msg => {
                 inlineArray.push(
                     [bot.inlineButton('Add Options', {callback: JSON.stringify({add: myJioList[i]._id})}),
                      bot.inlineButton('Remove Options', {callback: JSON.stringify({remove: myJioList[i]._id})})],
-                    [bot.inlineButton('Delete Jio', {callback: '/deleteJio'})]
+                    [bot.inlineButton('Delete Jio', {callback: JSON.stringify({delete: myJioList[i]._id})})]
                 );
 
                 let markup = bot.inlineKeyboard(inlineArray);
@@ -333,44 +338,4 @@ bot.on('/checkMyJio', msg => {
         });
 });
 
-bot.on('/editOptions', msg => {
-
-
-})
-
-// bot.on('/deleteJio', msg => {
-//
-// 	// find the list of jios in this group chat
-// 	// then find the jio of the creatorId = msg.from.id
-// 	return jioDB.find({groupId: msg.chat.id}).then(doc =>{
-// 		if (doc){
-// 			return jioDB.findOne({creatorId: msg.from.id}).then(toDeleteDoc => {
-// 				if (toDeleteDoc){
-// 					console.log(toDeleteDoc);
-//
-// 					let inlineArray = [];
-// 					inlineArray.push([bot.inlineButton('Yes', {callback: JSON.stringify('confirmDelete')}), bot.inlineButton('No', {callback: JSON.stringify('cancelDelete'))]);
-//
-// 					let markup = bot.inlineKeyboard(inlineArray);
-// 					bot.sendMessage(msg.chat.id, msg.from.first_name + ', are you sure to delete the Jio: ' + toDeleteDoc.title + '?', { markup, ask: 'deleteOptions' });
-// 				} else {
-// 					bot.sendMessage(msg.chat.id, msg.from.first_name + ', you have not created a Jio in this group!');
-// 				}
-// 			});
-// 		} else {
-// 			bot.sendMessage(msg.chat.id, 'There is no recorded Jio for this group!');
-// 		}
-// 	});
-// });
-//
-// bot.on('ask.deleteOptions', msg => {
-// 	if (msg.text === 'confirmDelete') {
-// 		return jioDB.removeOne({creatorId: msg.from.id}, {groupId: msg.chat:id});
-// 	} else {
-// 		bot.sendMessage(msg.chat.id, 'You have cancelled the Jio deletion.');
-// 	}
-// });
-
 bot.connect();
-
-// todo: edit options and delete jio

@@ -1,0 +1,21 @@
+jiobot:
+  build: .
+  links:
+    - mongo
+  environment:
+    MONGODB_HOST: mongo
+    MONGODB_PORT: 27017
+    MONGODB_DATABASE: jiobot
+
+mongo:
+  image: mongo
+  volumes_from:
+    - mongo_data
+  ports:
+    - 27017
+
+mongo_data:
+  image: busybox
+  volumes:
+    - /data/db
+  command: echo
