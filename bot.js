@@ -50,6 +50,18 @@ bot.on('/register', msg => {
     }
 });
 
+bot.on(['/help','/start'], msg => {
+    return bot.sendMessage(msg.chat.id, 'Hello, this is a bot to manage your Jios!\n' +
+        'First, /register with me privately in order to create your own Jios.\n' +
+        'Then, /new to start creating jios!\n\n' +
+        'Group Commands: \n' +
+        '/new - create new Jio for group\n' +
+        '/showJio - show active Jios for group\n\n' +
+        'Private Commands\n' +
+        '/register - show active Jios for group\n' +
+        '/checkMyJio - check/edit the Jios you have created');
+});
+
 bot.on('/new', msg => {
 
     jioMembers.findOne({telegramId: msg.from.id}).then(doc =>{
