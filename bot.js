@@ -27,10 +27,6 @@ const jioDB = db.get('jioData');
 const jioMapping = db.get('jioMapping');
 const jioMembers = db.get('jioMembers');
 
-bot.on(['/start', '/help'], msg => {
-    return bot.sendMessage(msg.from.id, 'Hi there!')
-});
-
 bot.on('/register', msg => {
 
     if (msg.chat.type !== 'private') {
