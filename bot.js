@@ -20,7 +20,7 @@ const bot = new TeleBot({
     }
 });
 
-bot.use(require('./node_modules/telebot/modules/ask.js'));
+bot.use(require('./ask.js'));
 
 const creating = {};
 const jioDB = db.get('jioData');
@@ -75,7 +75,7 @@ bot.on('/new', msg => {
                     options: []
                 }).then(newDoc => {
                     creating[msg.from.id] = newDoc._id; //set local flag to true to prevent shenanigans.
-                    return bot.sendMessage(msg.chat.id, 'What is the title/description of the Jio?', {ask: 'meetupTitle' });
+                    return bot.sendMessage(msg.chat.id, 'What is the title/description of the Jio?', {ask: {data: 'meetupTitle', fromId: msg.from.id }});
                 });
             };
         } else {
@@ -90,10 +90,10 @@ bot.on('ask.meetupTitle', msg => {
     return jioDB.findOne({_id: monk.id(creating[msg.from.id])}).then(doc => {
         if (doc){
             return jioDB.update({_id: monk.id(doc._id)}, {$set: {title: msg.text}}).then(updDoc => {
-                return bot.sendMessage(msg.from.id, 'Now send me a list of options to add, one by one.', {ask: 'meetupOptions'});
+                return bot.sendMessage(msg.from.id, 'Now send me a list of options to add, one by one.', {ask: {data: 'meetupOptions', fromId: msg.from.id }});
             });
         } else {
-            return bot.sendMessage(msg.chat.id, 'You are not the creator of the jio, please hold on.', {ask: 'meetupTitle'});
+            return bot.sendMessage(msg.chat.id, 'You are not the creator of the jio, please hold on.', {ask: {data: 'meetupTitle', fromId: msg.from.id }});
         };
     })
 });
@@ -132,7 +132,7 @@ bot.on('ask.meetupOptions', msg => {
         ['/finishJio']
     ],{resize: true, once: true});
 
-    return bot.sendMessage(msg.chat.id, 'Ok, option added. Please continue adding options or press the /finishJio button.', {markup, ask: 'meetupOptions'});
+    return bot.sendMessage(msg.chat.id, 'Ok, option added. Please continue adding options or press the /finishJio button.', {markup, ask: {data: 'meetupOptions', fromId: msg.from.id }});
 });
 
 bot.on('ask.editOptions', msg => {
@@ -167,7 +167,7 @@ bot.on('ask.editOptions', msg => {
         ['/finishJio']
     ],{resize: true, once: true});
 
-    return bot.sendMessage(msg.chat.id, 'Ok, option added. Please continue adding options or press the /finishJio button.', {markup, ask: 'editOptions'});
+    return bot.sendMessage(msg.chat.id, 'Ok, option added. Please continue adding options or press the /finishJio button.', {markup,ask: {data: 'meetupTitle', fromId: msg.from.id }});
 });
 
 // bot.on('inlineQuery', msg => {
@@ -209,7 +209,7 @@ bot.on('callbackQuery', msg =>{
     if (json.add) {
         //add options
         creating[msg.from.id] = json.add;
-        return bot.sendMessage(msg.from.id, 'Now send me a list of options to add, one by one.', {ask: 'editOptions'})
+        return bot.sendMessage(msg.from.id, 'Now send me a list of options to add, one by one.', {ask: {data: 'meetupTitle', fromId: msg.from.id }})
 
     } else if (json.remove){
         return jioDB.findOne({_id: monk.id(json.remove)}).then(doc => {
