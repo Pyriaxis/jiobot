@@ -52,7 +52,7 @@ bot.on(['/help','/start'], msg => {
         'Then, /new to start creating jios!\n\n' +
         'Group Commands: \n' +
         '/new - create new Jio for group\n' +
-        '/showJio - show active Jios for group\n\n' +
+        '/showJio - show who voted what for Jios in group\n\n' +
         'Private Commands\n' +
         '/register - show active Jios for group\n' +
         '/checkMyJio - check/edit the Jios you have created');
@@ -310,14 +310,21 @@ bot.on('/showJio', msg => {
     return jioDB.find({groupId: msg.chat.id}).then(doc =>{
         console.log(doc);
         for (var i = 0; i < doc.length; i++){
+            let voterString = 'People have voted for:\n';
             let inlineArray = [];
             for (let j = 0; j < doc[i].options.length; j++){
                 inlineArray.push([bot.inlineButton(doc[i].options[j].optionName + ' - ' + doc[i].options[j].voters.length, 
 				{callback: JSON.stringify({ id: doc[i]._id ,optionName: doc[i].options[j].optionName}) }) ]);
+                voterString = voterString + (j + 1).toString() + '. ' + doc[i].options[j].optionName + ':\n';
+                for (let k = 0; k < doc[i].options[j].voters.length; k++){
+                    voterString = voterString + '  ' + doc[i].options[j].voters[k].name + '\n';
+                }
+                voterString += '\n';
             }
 
             let markup = bot.inlineKeyboard(inlineArray);
-            bot.sendMessage(doc[i].groupId, 'Jio for ' + doc[i].title + ' created by ' + doc[i].creator + '!\n' +
+            bot.sendMessage(doc[i].groupId, 'Jio for ' + doc[i].title + ' created by ' + doc[i].creator + '!\n\n' +
+                voterString +
                 'Please choose from the options below:', { markup });
         }
     });
@@ -345,5 +352,7 @@ bot.on('/checkMyJio', msg => {
             }
         });
 });
+
+
 
 bot.connect();
