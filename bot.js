@@ -167,7 +167,7 @@ bot.on('ask.editOptions', msg => {
         ['/finishJio']
     ],{resize: true, once: true});
 
-    return bot.sendMessage(msg.chat.id, 'Ok, option added. Please continue adding options or press the /finishJio button.', {markup,ask: {data: 'meetupTitle', fromId: msg.from.id }});
+    return bot.sendMessage(msg.chat.id, 'Ok, option added. Please continue adding options or press the /finishJio button.', {markup,ask: {data: 'editOptions', fromId: msg.from.id }});
 });
 
 // bot.on('inlineQuery', msg => {
@@ -209,7 +209,7 @@ bot.on('callbackQuery', msg =>{
     if (json.add) {
         //add options
         creating[msg.from.id] = json.add;
-        return bot.sendMessage(msg.from.id, 'Now send me a list of options to add, one by one.', {ask: {data: 'meetupTitle', fromId: msg.from.id }})
+        return bot.sendMessage(msg.from.id, 'Now send me a list of options to add, one by one.', {ask: {data: 'editOptions', fromId: msg.from.id }})
 
     } else if (json.remove){
         return jioDB.findOne({_id: monk.id(json.remove)}).then(doc => {
