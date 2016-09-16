@@ -293,9 +293,23 @@ bot.on('callbackQuery', msg =>{
                     return bot.editMarkup({chatId, messageId}, {markup});
 
                 } else {
+					//alr voted
+                    //remove user from selected option
+					updatedOptions[optionIndex].voters.splice(voteIndex, 1);
+					jioDB.update({_id: monk.id(json.id)}, {$set:{options: updatedOptions}});
 
-                    //alr voted
-                    return;
+                    let inlineArray = [];
+
+                    for (let j = 0; j < doc.options.length; j++){
+                        inlineArray.push([bot.inlineButton(doc.options[j].optionName + ' - ' + doc.options[j].voters.length,
+                            {callback: JSON.stringify({ id: doc._id ,optionName: doc.options[j].optionName}) }) ]);
+                    }
+                    let markup = bot.inlineKeyboard(inlineArray);
+
+                    let chatId = msg.message.chat.id;
+                    let messageId = msg.message.message_id;
+
+                    return bot.editMarkup({chatId, messageId}, {markup});
                 }
             } else {
                 //failure
